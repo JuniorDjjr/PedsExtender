@@ -21,9 +21,11 @@ fstream lg;
 short(*pedGroups)[21];
 
 bool bInitialized = false;
+bool bFirstFrame = true;
 
 int iTimeLastCdeput = -1;
 
+int iModelArmy = -1;
 int iModelCdeput = -1;
 int iModelDsher = -1;
 int iModelsfpdm1 = -1;
@@ -31,6 +33,8 @@ int iModellvpdm1 = -1;
 int iModelcspdm1 = -1;
 int iModeldspdm1 = -1;
 int iModelwmycd2 = -1;
+int iModelWmyskat = -1;
+int iModelSktbd = -1;
 
 int iModelsCopLS[9];
 int iModelsCopLSCount = 0;
@@ -70,10 +74,18 @@ int ConsiderModelIdVariation(int iModel)
 int CustomGetCopModelByZone()
 {
 	int iModel = 0;
+	// military zone
+	if (iModelArmy > 0)
+	{
+		int cullzoneCurrentFlags = *(int*)0xC87ABC; // CCullZones::CurrentFlags_Camera
+		if ((cullzoneCurrentFlags & 0x1000) != 0) {
+			return ConsiderModelIdVariation(iModelArmy);
+		}
+	}
 	// countryside or desert
 	if ( CTheZones::m_CurrLevel == eLevelName::LEVEL_NAME_COUNTRY_SIDE)
 	{
-		lg << "region " << CPopCycle::m_nCurrentZoneType << endl;
+		//lg << "region " << CPopCycle::m_nCurrentZoneType << endl;
 		//desert
 		if (CPopCycle::m_nCurrentZoneType == 1)
 		{
@@ -96,7 +108,7 @@ int CustomGetCopModelByZone()
 	return ConsiderModelIdVariation(iModel);
 }
 
-int GetBikerModel()
+int GetCopBikerModel()
 {
 	int iModel = 0;
 
@@ -126,21 +138,24 @@ int GetBikerModel()
 	return ConsiderModelIdVariation(iModel);
 }
 
-int LoadSomePedModel(int gangId, bool loadNow)
+int LoadSomePedModel(int gangId, bool loadNow, bool useLogNow = true)
 {
 	int model = MODEL_MALE01;
+
+	if (*(uintptr_t*)0xC0BC68 == 0) return model;
+
 	if (gangId >= 0)
 	{
 		if (plugin::CallAndReturn<bool, 0x4439D0, int>(gangId)) // any ped loaded for this gang
 		{
 			if (CGangWars::PickStreamedInPedForThisGang(gangId, &model))
 			{
-				lg << "auto fixed gang " << model << " gang id " << gangId << endl;
+				if (useLogNow) lg << "auto fixed gang " << model << " gang id " << gangId << endl;
 				return model;
 			}
 		}
 		model = pedGroups[CPopulation::m_TranslationArray[gangId + 18].pedGroupId][0];
-		lg << "manual fixed gang " << model << " gang id " << gangId << endl;
+		if (useLogNow) lg << "manual fixed gang " << model << " gang id " << gangId << endl;
 	}
 	else
 	{
@@ -155,6 +170,7 @@ int LoadSomePedModel(int gangId, bool loadNow)
 				break;
 			}
 			model = plugin::CallAndReturn<int, 0x60FFD0, CVector*>(&FindPlayerPed(-1)->GetPosition());
+			if (model == -1) continue;
 			modelInfo = (CPedModelInfo *)CModelInfo::GetModelInfo(model);
 			if (!modelInfo) continue;
 		} while (
@@ -191,13 +207,25 @@ bool RequestModelIfExists(char *name, int *index)
 	return false;
 }
 
+bool FindModelIfExists(char* name, int* index)
+{
+	lg << "Trying to find " << name << endl;
+	CModelInfo::GetModelInfo(name, index);
+	if (*index > 0)
+	{
+		lg << "Model found " << name << endl;
+		return true;
+	}
+	return false;
+}
+
 class FixMALE01
 {
 public:
     FixMALE01()
 	{
 		lg.open("PedsExtender.SA.log", fstream::out | fstream::trunc);
-		lg << "v1.0 by Junior_Djjr - MixMods.com.br" << endl;
+		lg << "v1.1 by Junior_Djjr - MixMods.com.br" << endl;
 
 		if (GetModuleHandleA("FixMALE01.SA.asi")) {
 			lg << "ERROR: PedsExtender is a new version of 'FixMALE01.SA.asi'. Please delete 'FixMALE01.SA.asi'." << endl;
@@ -256,11 +284,16 @@ public:
 					case MODEL_FREEWAY:
 						regs.eax = CGeneral::GetRandomNumberInRange(MODEL_BIKERA, MODEL_BIKERB + 1);
 						break;
+					default:
+						if (iModelWmyskat > 0 && vehicle->m_nModelIndex == iModelSktbd) {
+							regs.eax = iModelWmyskat;
+						}
+						break;
 					}
 
-					CVehicleModelInfo *modelInfo = (CVehicleModelInfo *)CModelInfo::GetModelInfo(vehicle->m_nModelIndex);
 					if (regs.eax == MODEL_MALE01)
 					{
+						CVehicleModelInfo* modelInfo = (CVehicleModelInfo*)CModelInfo::GetModelInfo(vehicle->m_nModelIndex);
 						switch (modelInfo->m_nVehicleClass)
 						{
 						case eVehicleClass::CLASS_TAXI:
@@ -278,8 +311,8 @@ public:
 							}
 							break;
 						}
+						lg << regs.eax << " for vehicle, class " << (int)modelInfo->m_nVehicleClass << endl;
 					}
-					lg << regs.eax << " for vehicle, class " << (int)modelInfo->m_nVehicleClass << endl;
 				}
 
 				if (regs.eax != MODEL_MALE01)
@@ -287,8 +320,8 @@ public:
 					CStreaming::RequestModel(regs.eax, eStreamingFlags::GAME_REQUIRED);
 					CStreaming::LoadAllRequestedModels(false);
 					CStreaming::SetModelIsDeletable(regs.eax);
-					CPedModelInfo *modelInfo = (CPedModelInfo *)CModelInfo::GetModelInfo(regs.eax);
 					CStreaming::SetModelTxdIsDeletable(regs.eax);
+					CPedModelInfo* modelInfo = (CPedModelInfo*)CModelInfo::GetModelInfo(regs.eax);
 					if (modelInfo && modelInfo->m_pRwObject)
 					{
 						regs.esi = modelInfo->m_nPedType;
@@ -313,9 +346,11 @@ public:
 
 		Events::initGameEvent.after += []
 		{
+			bFirstFrame = true;
 			if (bInitialized) return;
 			bInitialized = true;
 
+			RequestModelIfExists("army", &iModelArmy);
 			RequestModelIfExists("cdeput", &iModelCdeput);
 			RequestModelIfExists("dsher", &iModelDsher);
 			RequestModelIfExists("sfpdm1", &iModelsfpdm1);
@@ -323,6 +358,9 @@ public:
 			RequestModelIfExists("cspdm1", &iModelcspdm1);
 			RequestModelIfExists("dspdm1", &iModeldspdm1);
 			RequestModelIfExists("wmycd2", &iModelwmycd2);
+			RequestModelIfExists("wmyskat", &iModelWmyskat);
+
+			FindModelIfExists("sktbd", &iModelSktbd);
 
 			char tempName[8] = { 0 };
 
@@ -368,14 +406,44 @@ public:
 
 			CStreaming::LoadAllRequestedModels(false);
 			lg << "Ok" << endl;
+
+			if (iModelWmyskat > 0 && iModelSktbd > 0)
+			{
+				MakeInline<0x61327C, 0x61327C + 8>([](injector::reg_pack& regs)
+				{
+					*(uint32_t*)(regs.esp + 0x1C) = 0; //mov     [esp+14h+arg_4], 0
+					CVehicle* vehicle = (CVehicle*)regs.edi;
+					if (vehicle->m_nModelIndex == iModelSktbd) {
+						regs.esi = iModelWmyskat;
+						//lg << "-- SKATE " << regs.esi << endl;
+						*(uintptr_t*)(regs.esp - 0x4) = 0x613165;
+					}
+				});
+			}
+			// fix roadblocks
+			MakeInline<0x4613E2, 0x4613E2 + 7>([](injector::reg_pack& regs)
+			{
+				regs.edi = *(uint32_t*)(regs.esp + 0x170 + 0x4); //mov     edi, [esp+170h+entity]
+				*(uint32_t*)(regs.esp + 0x170 - 0x15C) = LoadSomePedModel(-1, true); //mov     [esp+170h+pedModel], 11Dh
+			});
+
 		};
 
 		//WriteMemory<uint32_t>(0x8A5AB0, 277, false);
 
-		Events::processScriptsEvent += []
+		Events::processScriptsEvent.after += []
 		{
+			if (bFirstFrame && *(uintptr_t*)0xC0BC68 != 0) {
+				/*lg << "First game frame." << endl;
+				// pre load at least some models to fix male01 on game load... but it looks like useless
+				LoadSomePedModel(-1, true, false);
+				LoadSomePedModel(-1, true, false);
+				LoadSomePedModel(-1, true, false);*/
+				bFirstFrame = false;
+			}
+
 			WriteMemory<uint8_t>(0x5DDD85 + 0, 0x68, true);
-			WriteMemory<uint32_t>(0x5DDD85 + 1, GetBikerModel(), true);
+			WriteMemory<uint32_t>(0x5DDD85 + 1, GetCopBikerModel(), true);
 
 			if (iModelwmycd2 > 0)
 			{
@@ -384,8 +452,5 @@ public:
 			}
 		};
 
-		/*Events::onPauseAllSounds += [] {
-			lg.flush();
-		};*/
     }
 } fixMALE01;
