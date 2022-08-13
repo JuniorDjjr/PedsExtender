@@ -10,6 +10,8 @@
 #include "CWeather.h"
 #include "CTimer.h"
 #include "CPopCycle.h"
+#include "CMessages.h"
+#include "CTheZones.h"
 #include "..\injector\assembly.hpp"
 
 using namespace plugin;
@@ -34,6 +36,7 @@ int iModelcspdm1 = -1;
 int iModeldspdm1 = -1;
 int iModelwmycd2 = -1;
 int iModelWmyskat = -1;
+int iModelPoolguy = -1;
 int iModelSktbd = -1;
 
 int iModelsCopLS[9];
@@ -86,8 +89,11 @@ int CustomGetCopModelByZone()
 	if ( CTheZones::m_CurrLevel == eLevelName::LEVEL_NAME_COUNTRY_SIDE)
 	{
 		//lg << "region " << CPopCycle::m_nCurrentZoneType << endl;
+		int popcycleZoneType = CPopCycle::m_nCurrentZoneType;
 		//desert
-		if (CPopCycle::m_nCurrentZoneType == 1)
+		// note: flint country uses zone type 1, just like desert, and current popcycle zone doesn't stores the zone name, and get zone name by player/camera coord may fail,
+		// there is no good way to do that, checking by coord is good and optimized but may fail if someone use this mod with a total conversion (very specific)
+		if ((popcycleZoneType == 1 || popcycleZoneType == 18 || popcycleZoneType == 5) && DistanceBetweenPoints(FindPlayerPed(-1)->GetPosition(), { -213.3726f, -1446.9957f, 28.472f }) > 500.0f)
 		{
 			iModel = iModelDsher;
 		}
@@ -164,15 +170,23 @@ int LoadSomePedModel(int gangId, bool loadNow, bool useLogNow = true)
 		do
 		{
 			tries++;
-			if (tries > 30)
+			if (tries > 20)
 			{
 				model = MODEL_MALE01;
 				break;
 			}
 			model = plugin::CallAndReturn<int, 0x60FFD0, CVector*>(&FindPlayerPed(-1)->GetPosition());
-			if (model == -1) continue;
+			if (model == -1)
+			{
+				model = MODEL_MALE01;
+				break;
+			}
 			modelInfo = (CPedModelInfo *)CModelInfo::GetModelInfo(model);
-			if (!modelInfo) continue;
+			if (modelInfo == nullptr)
+			{
+				model = MODEL_MALE01;
+				break;
+			}
 		} while (
 			!modelInfo ||
 			(modelInfo->m_nStatType >= 4 && modelInfo->m_nStatType <= 13) ||
@@ -225,7 +239,7 @@ public:
     FixMALE01()
 	{
 		lg.open("PedsExtender.SA.log", fstream::out | fstream::trunc);
-		lg << "v1.1 by Junior_Djjr - MixMods.com.br" << endl;
+		lg << "v1.1.2 by Junior_Djjr - MixMods.com.br" << endl;
 
 		if (GetModuleHandleA("FixMALE01.SA.asi")) {
 			lg << "ERROR: PedsExtender is a new version of 'FixMALE01.SA.asi'. Please delete 'FixMALE01.SA.asi'." << endl;
@@ -250,7 +264,7 @@ public:
 		{
 			//regs.esi = LoadSomePedModel();
 			regs.esi = -1; // to use FixModel01ForVehicle; it's expected to return -1 in vanilla too
-			lg << "will fix vehicle " << endl;
+			//lg << "will fix vehicle " << endl;
 			*(uintptr_t*)(regs.esp - 0x4) = 0x6133E1;
 		});
 
@@ -261,7 +275,7 @@ public:
 				CVehicle* vehicle = reinterpret_cast<CVehicle*>(regs.edi);
 				int type = *(int*)(regs.esp + 0x30);
 
-				lg << "-- START fix for vehicle id " << vehicle->m_nModelIndex << " type " << type << endl;
+				lg << "START fix for vehicle id " << vehicle->m_nModelIndex << " type " << type << endl;
 
 				regs.eax = MODEL_MALE01;
 
@@ -283,6 +297,9 @@ public:
 						break;
 					case MODEL_FREEWAY:
 						regs.eax = CGeneral::GetRandomNumberInRange(MODEL_BIKERA, MODEL_BIKERB + 1);
+						break;
+					case MODEL_SECURICA:
+						regs.eax = MODEL_WMYSGRD;
 						break;
 					default:
 						if (iModelWmyskat > 0 && vehicle->m_nModelIndex == iModelSktbd) {
@@ -330,11 +347,11 @@ public:
 					{
 						regs.eax = MODEL_MALE01;
 					}
-					lg << "-- FINAL " << regs.eax << endl;
+					lg << "FINAL " << regs.eax << endl;
 				}
 				else
 				{
-					lg << "-- NO FIX " << regs.eax << endl;
+					lg << "NO FIX " << regs.eax << endl;
 				}
 			}
 		};
@@ -359,6 +376,7 @@ public:
 			RequestModelIfExists("dspdm1", &iModeldspdm1);
 			RequestModelIfExists("wmycd2", &iModelwmycd2);
 			RequestModelIfExists("wmyskat", &iModelWmyskat);
+			RequestModelIfExists("poolguy", &iModelPoolguy);
 
 			FindModelIfExists("sktbd", &iModelSktbd);
 
@@ -433,6 +451,8 @@ public:
 
 		Events::processScriptsEvent.after += []
 		{
+			//CMessages::AddMessageJumpQWithNumber("region '~1~'", 1000, 0, (int)CPopCycle::m_nCurrentZoneType, 0, 0, 0, 0, 0, false);
+
 			if (bFirstFrame && *(uintptr_t*)0xC0BC68 != 0) {
 				/*lg << "First game frame." << endl;
 				// pre load at least some models to fix male01 on game load... but it looks like useless
