@@ -36,7 +36,7 @@ int iModelcspdm1 = -1;
 int iModeldspdm1 = -1;
 int iModelwmycd2 = -1;
 int iModelWmyskat = -1;
-int iModelPoolguy = -1;
+int iModelPoolgy2 = -1;
 int iModelSktbd = -1;
 
 int iModelsCopLS[9];
@@ -50,7 +50,7 @@ int iModelsCopCCount = 0;
 int iModelsCopD[9];
 int iModelsCopDCount = 0;
 
-int ConsiderModelIdVariation(int iModel)
+int ConsiderCopModelIdVariation(int iModel)
 {
 	int iResultModel = iModel;
 	switch (iModel)
@@ -82,7 +82,7 @@ int CustomGetCopModelByZone()
 	{
 		int cullzoneCurrentFlags = *(int*)0xC87ABC; // CCullZones::CurrentFlags_Camera
 		if ((cullzoneCurrentFlags & 0x1000) != 0) {
-			return ConsiderModelIdVariation(iModelArmy);
+			return ConsiderCopModelIdVariation(iModelArmy);
 		}
 	}
 	// countryside or desert
@@ -111,7 +111,7 @@ int CustomGetCopModelByZone()
 		// default
 		iModel = CallAndReturn<int, 0x407C00>();
 	}
-	return ConsiderModelIdVariation(iModel);
+	return ConsiderCopModelIdVariation(iModel);
 }
 
 int GetCopBikerModel()
@@ -141,7 +141,7 @@ int GetCopBikerModel()
 	{
 		iModel = 284; // lapdm1
 	}
-	return ConsiderModelIdVariation(iModel);
+	return ConsiderCopModelIdVariation(iModel);
 }
 
 int LoadSomePedModel(int gangId, bool loadNow, bool useLogNow = true)
@@ -233,13 +233,27 @@ bool FindModelIfExists(char* name, int* index)
 	return false;
 }
 
+//TODO: adapt more functions to this single hook
+void __fastcall CustomSetPedModelIndex(CPed* _this, int a, int model)
+{
+	if (iModelPoolgy2 > 0) {
+		if (model == 66 || model == 67)
+		{
+			if (CGeneral::GetRandomNumberInRange(0, 3) == 0) {
+				model = iModelPoolgy2;
+			}
+		}
+	}
+	_this->SetModelIndex(model);
+}
+
 class FixMALE01
 {
 public:
     FixMALE01()
 	{
 		lg.open("PedsExtender.SA.log", fstream::out | fstream::trunc);
-		lg << "v1.1.2 by Junior_Djjr - MixMods.com.br" << endl;
+		lg << "v1.1.3 by Junior_Djjr - MixMods.com.br" << endl;
 
 		if (GetModuleHandleA("FixMALE01.SA.asi")) {
 			lg << "ERROR: PedsExtender is a new version of 'FixMALE01.SA.asi'. Please delete 'FixMALE01.SA.asi'." << endl;
@@ -258,6 +272,9 @@ public:
 			lg << "fixed ped to " << regs.esi << endl;
 			*(uintptr_t*)(regs.esp - 0x4) = 0x613164;
 		});
+
+		patch::RedirectCall(0x5DDBAC, CustomSetPedModelIndex, true); //civilian
+
 
 		// Vehicle
 		MakeInline<0x6133D6, 0x6133D6 + 5>([](injector::reg_pack& regs)
@@ -349,10 +366,10 @@ public:
 					}
 					lg << "FINAL " << regs.eax << endl;
 				}
-				else
+				/*else
 				{
 					lg << "NO FIX " << regs.eax << endl;
-				}
+				}*/
 			}
 		};
 		MakeInline<FixModel01ForVehicle>(0x613B3E, 0x613B3E + 5);
@@ -376,7 +393,7 @@ public:
 			RequestModelIfExists("dspdm1", &iModeldspdm1);
 			RequestModelIfExists("wmycd2", &iModelwmycd2);
 			RequestModelIfExists("wmyskat", &iModelWmyskat);
-			RequestModelIfExists("poolguy", &iModelPoolguy);
+			RequestModelIfExists("poolgy2", &iModelPoolgy2);
 
 			FindModelIfExists("sktbd", &iModelSktbd);
 
