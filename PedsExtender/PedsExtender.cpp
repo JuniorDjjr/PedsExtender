@@ -253,7 +253,7 @@ public:
     FixMALE01()
 	{
 		lg.open("PedsExtender.SA.log", fstream::out | fstream::trunc);
-		lg << "v1.1.3 by Junior_Djjr - MixMods.com.br" << endl;
+		lg << "v1.1.4 by Junior_Djjr - MixMods.com.br" << endl;
 
 		if (GetModuleHandleA("FixMALE01.SA.asi")) {
 			lg << "ERROR: PedsExtender is a new version of 'FixMALE01.SA.asi'. Please delete 'FixMALE01.SA.asi'." << endl;
@@ -302,27 +302,29 @@ public:
 				}
 				else
 				{
-					switch (vehicle->m_nModelIndex)
-					{
-					case MODEL_COMBINE:
-					case MODEL_TRACTOR:
-						regs.eax = LoadSomePedModel(-1, false);
-						break;
-					case MODEL_FREIGHT:
-					case MODEL_STREAK:
+					if (vehicle->m_nVehicleSubClass == eVehicleType::VEHICLE_TRAIN) {
 						regs.eax = MODEL_BMOSEC;
-						break;
-					case MODEL_FREEWAY:
-						regs.eax = CGeneral::GetRandomNumberInRange(MODEL_BIKERA, MODEL_BIKERB + 1);
-						break;
-					case MODEL_SECURICA:
-						regs.eax = MODEL_WMYSGRD;
-						break;
-					default:
-						if (iModelWmyskat > 0 && vehicle->m_nModelIndex == iModelSktbd) {
-							regs.eax = iModelWmyskat;
+					}
+					else
+					{
+						switch (vehicle->m_nModelIndex)
+						{
+						case MODEL_COMBINE:
+						case MODEL_TRACTOR:
+							regs.eax = LoadSomePedModel(-1, false);
+							break;
+						case MODEL_FREEWAY:
+							regs.eax = CGeneral::GetRandomNumberInRange(MODEL_BIKERA, MODEL_BIKERB + 1);
+							break;
+						case MODEL_SECURICA:
+							regs.eax = MODEL_WMYSGRD;
+							break;
+						default:
+							if (iModelWmyskat > 0 && vehicle->m_nModelIndex == iModelSktbd) {
+								regs.eax = iModelWmyskat;
+							}
+							break;
 						}
-						break;
 					}
 
 					if (regs.eax == MODEL_MALE01)
