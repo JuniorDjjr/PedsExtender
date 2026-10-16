@@ -50,6 +50,17 @@ int iModelsCopCCount = 0;
 int iModelsCopD[9];
 int iModelsCopDCount = 0;
 
+// Models picked here go straight into CPed::SetModelIndex, which crashes (0x749B7B) on a model that isn't streamed in.
+// Requesting them on init doesn't keep them resident: the game itself marks e.g. army as deletable every frame below 6 stars.
+// So only use a model that is loaded; otherwise ask for it and use the fallback this time.
+int UseIfLoaded(int iModel, int iFallback)
+{
+	if (iModel <= 0) return iFallback;
+	if (CStreaming::ms_aInfoForModel[iModel].m_nLoadState == LOADSTATE_LOADED) return iModel;
+	CStreaming::RequestModel(iModel, eStreamingFlags::GAME_REQUIRED | eStreamingFlags::KEEP_IN_MEMORY);
+	return iFallback;
+}
+
 int ConsiderCopModelIdVariation(int iModel)
 {
 	int iResultModel = iModel;
@@ -71,6 +82,7 @@ int ConsiderCopModelIdVariation(int iModel)
 		if (iModelsCopDCount > 0) iResultModel = iModelsCopD[CGeneral::GetRandomNumberInRange(0, iModelsCopDCount)];
 		break;
 	}
+	if (iResultModel != iModel) iResultModel = UseIfLoaded(iResultModel, iModel);
 	return iResultModel;
 }
 
@@ -82,7 +94,8 @@ int CustomGetCopModelByZone()
 	{
 		int cullzoneCurrentFlags = *(int*)0xC87ABC; // CCullZones::CurrentFlags_Camera
 		if ((cullzoneCurrentFlags & 0x1000) != 0) {
-			return ConsiderCopModelIdVariation(iModelArmy);
+			int iArmy = UseIfLoaded(ConsiderCopModelIdVariation(iModelArmy), 0);
+			if (iArmy > 0) return iArmy;
 		}
 	}
 	// countryside or desert
@@ -95,14 +108,14 @@ int CustomGetCopModelByZone()
 		// there is no good way to do that, checking by coord is good and optimized but may fail if someone use this mod with a total conversion (very specific)
 		if ((popcycleZoneType == 1 || popcycleZoneType == 18 || popcycleZoneType == 5) && DistanceBetweenPoints(FindPlayerPed(-1)->GetPosition(), { -213.3726f, -1446.9957f, 28.472f }) > 500.0f)
 		{
-			iModel = iModelDsher;
+			iModel = UseIfLoaded(iModelDsher, 0);
 		}
 		else
 		{
 			if (iModelCdeput > 0 && (CTimer::m_snTimeInMilliseconds - iTimeLastCdeput) > 30000 && CGeneral::GetRandomNumberInRange(0, 5) == 1)
 			{
-				iTimeLastCdeput = CTimer::m_snTimeInMilliseconds;
-				iModel = iModelCdeput;
+				iModel = UseIfLoaded(iModelCdeput, 0);
+				if (iModel > 0) iTimeLastCdeput = CTimer::m_snTimeInMilliseconds;
 			}
 		}
 	}
@@ -137,10 +150,7 @@ int GetCopBikerModel()
 	{
 		iModel = iModellvpdm1;
 	}
-	if (iModel <= 0)
-	{
-		iModel = 284; // lapdm1
-	}
+	iModel = UseIfLoaded(iModel, 284); // lapdm1
 	return ConsiderCopModelIdVariation(iModel);
 }
 
@@ -240,7 +250,7 @@ void __fastcall CustomSetPedModelIndex(CPed* _this, int a, int model)
 		if (model == 66 || model == 67)
 		{
 			if (CGeneral::GetRandomNumberInRange(0, 3) == 0) {
-				model = iModelPoolgy2;
+				model = UseIfLoaded(iModelPoolgy2, model);
 			}
 		}
 	}
@@ -386,7 +396,7 @@ public:
 			if (bInitialized) return;
 			bInitialized = true;
 
-			RequestModelIfExists("army", &iModelArmy);
+			FindModelIfExists("army", &iModelArmy); // streamed in only near military zones, see processScriptsEvent
 			RequestModelIfExists("cdeput", &iModelCdeput);
 			RequestModelIfExists("dsher", &iModelDsher);
 			RequestModelIfExists("sfpdm1", &iModelsfpdm1);
@@ -479,6 +489,14 @@ public:
 				LoadSomePedModel(-1, true, false);
 				LoadSomePedModel(-1, true, false);*/
 				bFirstFrame = false;
+			}
+
+			// Army is only picked while the camera is in a military zone (see CustomGetCopModelByZone), so stream it in there,
+			// ahead of the first cop, instead of keeping it in memory all the time. Below 6 stars the game marks army as deletable
+			// every frame, which cancels a pending request without KEEP_IN_MEMORY; once loaded, it's unloaded normally after leaving.
+			if (iModelArmy > 0 && (*(int*)0xC87ABC & 0x1000) != 0 && CStreaming::ms_aInfoForModel[iModelArmy].m_nLoadState != LOADSTATE_LOADED)
+			{
+				CStreaming::RequestModel(iModelArmy, eStreamingFlags::GAME_REQUIRED | eStreamingFlags::KEEP_IN_MEMORY);
 			}
 
 			WriteMemory<uint8_t>(0x5DDD85 + 0, 0x68, true);
