@@ -420,10 +420,10 @@ public:
 			strcpy_s(tempName, 7, "lvpd1");
 			for (int i = 0; i < 9; ++i) {
 				tempName[4] = (char)(50 + i);
-				if (!RequestModelIfExists(tempName, &iModelsCopSF[i])) break;
+				if (!RequestModelIfExists(tempName, &iModelsCopLV[i])) break;
 				++iModelsCopLVCount;
 			}
-			if (iModelsCopLVCount > 0) { iModelsCopSF[iModelsCopLVCount] = 282; iModelsCopLVCount++; }
+			if (iModelsCopLVCount > 0) { iModelsCopLV[iModelsCopLVCount] = 282; iModelsCopLVCount++; }
 
 			strcpy_s(tempName, 7, "csher1");
 			for (int i = 0; i < 10; ++i) {
